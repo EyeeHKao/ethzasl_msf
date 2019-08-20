@@ -22,8 +22,8 @@
 #endif
 
 #ifdef UNUSEDPARAM
-#elif defined(__GNUC__)
-# define UNUSEDPARAM(x) UNUSED_ ## x __attribute__((unused))
+#elif defined(__GNUC__)     //使用C预处理器的GNU编译器（c,c++，..）会定义这个宏，参考https://gcc.gnu.org/onlinedocs/cpp/Common-Predefined-Macros.html
+# define UNUSEDPARAM(x) UNUSED_ ## x __attribute__((unused))    // __attribute__((unused))意味这这个变量很可能不使用，GCC编译器将不会发出未使用变量的警告
 #elif defined(__LCLINT__)
 # define UNUSEDPARAM(x) /*@unused@*/ x
 #else
