@@ -54,6 +54,7 @@ template<typename EKFState_T>
 MSF_Core<EKFState_T>::~MSF_Core() {
 }
 
+//设置error state的协方差矩阵P
 template<typename EKFState_T>
 void MSF_Core<EKFState_T>::SetPCore(
     Eigen::Matrix<double, EKFState_T::nErrorStatesAtCompileTime,
@@ -85,8 +86,8 @@ void MSF_Core<EKFState_T>::SetPCore(
             -0.0002, -0.0002, -0.0004, -0.0001, 0.0003, 0.0001, -0.0001, -0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0010, 0.0000,
             -0.0000, 0.0000, -0.0001, 0.0000, 0.0000, -0.0001, -0.0000, -0.0000, -0.0000, 0.0000, 0.0000, -0.0000, 0.0000, 0.0000, 0.0001;
 
-  P_core = 0.5 * (P_core + P_core.transpose());
-  P.template block<coreErrorStates, coreErrorStates>(0, 0) = P_core;
+  P_core = 0.5 * (P_core + P_core.transpose()); ///转为对称阵
+  P.template block<coreErrorStates, coreErrorStates>(0, 0) = P_core;   ///填充core state 对应部分    
 }
 
 template<typename EKFState_T>
@@ -111,7 +112,7 @@ void MSF_Core<EKFState_T>::ProcessIMU(
   shared_ptr<EKFState_T> lastState = it_last_IMU->second;
   timer_PropGetClosestState.Stop();
 
-  msf_timing::DebugTimer timer_PropPrepare("PropPrepare");
+  msf_timing::DebugTimer timer_PropPrepare("PropPrepare");  ///检查时序是否正确，上次状态是否合法
   if (lastState->time == constants::INVALID_TIME) {
     MSF_WARN_STREAM_THROTTLE(
         2, __FUNCTION__<<"ImuCallback: closest state is invalid\n");
@@ -144,7 +145,7 @@ void MSF_Core<EKFState_T>::ProcessIMU(
   // Remove acc spikes (TODO (slynen): find a cleaner way to do this).
   static Eigen::Matrix<double, 3, 1> last_am =
       Eigen::Matrix<double, 3, 1>(0, 0, 0);
-  if (currentState->a_m.norm() > 50)
+  if (currentState->a_m.norm() > 50)    ///当前加速度过大，跳动厉害，直接置为前一刻的加速度
     currentState->a_m = last_am;
   else {
     // Try to get the state before the current time.
@@ -182,17 +183,17 @@ void MSF_Core<EKFState_T>::ProcessIMU(
 
   msf_timing::DebugTimer timer_PropState("PropState");
   //propagate state and covariance
-  PropagateState(lastState, currentState);
+  PropagateState(lastState, currentState);  
   timer_PropState.Stop();
 
   msf_timing::DebugTimer timer_PropInsertState("PropInsertState");
-  it_last_IMU = stateBuffer_.Insert(currentState);
+  it_last_IMU = stateBuffer_.Insert(currentState);  ///将当前状态插入到state buffer
   timer_PropInsertState.Stop();
 
   msf_timing::DebugTimer timer_PropCov("PropCov");
   PropagatePOneStep();
   timer_PropCov.Stop();
-  usercalc_.PublishStateAfterPropagation(currentState);
+  usercalc_.PublishStateAfterPropagation(currentState); ///publish 
 
   // Making sure we have sufficient states to apply measurements to.
   if (stateBuffer_.Size() > 3)
@@ -200,7 +201,7 @@ void MSF_Core<EKFState_T>::ProcessIMU(
 
   if (predictionMade_) {
     // Check if we can apply some pending measurement.
-    HandlePendingMeasurements();
+    HandlePendingMeasurements();    
   }
   seq++;
 
@@ -318,11 +319,12 @@ void MSF_Core<EKFState_T>::HandlePendingMeasurements() {
   AddMeasurement(meas);
 }
 
+//清除1min之前的缓存状态
 template<typename EKFState_T>
 void MSF_Core<EKFState_T>::CleanUpBuffers() {
   double timeold = 60;  // 1 min.
-  stateBuffer_.ClearOlderThan(timeold);
-  MeasurementBuffer_.ClearOlderThan(timeold);
+  stateBuffer_.ClearOlderThan(timeold);     ///清除1min前的缓存状态 
+  MeasurementBuffer_.ClearOlderThan(timeold);   ///清除1min前的测量状态
 }
 
 template<typename EKFState_T>
