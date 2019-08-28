@@ -95,6 +95,7 @@ const MSF_SensorManager<EKFState_T>& MSF_Core<EKFState_T>::GetUserCalc() const {
   return usercalc_;
 }
 
+//处理IMU消息：内部预测处理
 template<typename EKFState_T>
 void MSF_Core<EKFState_T>::ProcessIMU(
     const msf_core::Vector3& linear_acceleration,
@@ -191,11 +192,11 @@ void MSF_Core<EKFState_T>::ProcessIMU(
   timer_PropInsertState.Stop();
 
   msf_timing::DebugTimer timer_PropCov("PropCov");
-  PropagatePOneStep();
+  PropagatePOneStep();  ///传播协方差矩阵P
   timer_PropCov.Stop();
   usercalc_.PublishStateAfterPropagation(currentState); ///publish 
 
-  // Making sure we have sufficient states to apply measurements to.
+  //Making sure we have sufficient states to apply measurements to.
   if (stateBuffer_.Size() > 3)
     predictionMade_ = true;
 
@@ -207,6 +208,7 @@ void MSF_Core<EKFState_T>::ProcessIMU(
 
 }
 
+///处理外部传播状态：如果状态由外部预测传播，那么只需更新内部状态，协方差等    
 template<typename EKFState_T>
 void MSF_Core<EKFState_T>::ProcessExternallyPropagatedState(
     const msf_core::Vector3& linear_acceleration,
@@ -327,6 +329,7 @@ void MSF_Core<EKFState_T>::CleanUpBuffers() {
   MeasurementBuffer_.ClearOlderThan(timeold);   ///清除1min前的测量状态
 }
 
+///传播状态：IMU预测
 template<typename EKFState_T>
 void MSF_Core<EKFState_T>::PropagateState(shared_ptr<EKFState_T>& state_old,
                                           shared_ptr<EKFState_T>& state_new) {
@@ -391,6 +394,7 @@ void MSF_Core<EKFState_T>::PropagateState(shared_ptr<EKFState_T>& state_old,
           + state_old->template Get<StateDefinition_T::v>()) / 2 * dt);
 }
 
+///传播协方差P    
 template<typename EKFState_T>
 void MSF_Core<EKFState_T>::PropagatePOneStep() {
   // Also propagate the covariance one step further, to distribute the
@@ -405,7 +409,7 @@ void MSF_Core<EKFState_T>::PropagatePOneStep() {
   if (stateIteratorPLastPropagatedNext != stateBuffer_.GetIteratorEnd()) {
 
     PredictProcessCovariance(stateIteratorPLastPropagated->second,
-                             stateIteratorPLastPropagatedNext->second);
+                             stateIteratorPLastPropagatedNext->second); ///预测过程协方差传播
 
     if (!CheckForNumeric(
         stateIteratorPLastPropagatedNext->second
@@ -544,6 +548,7 @@ void MSF_Core<EKFState_T>::PredictProcessCovariance(
 
 }
 
+///初始化    
 template<typename EKFState_T>
 void MSF_Core<EKFState_T>::Init(
     shared_ptr<MSF_MeasurementBase<EKFState_T> > measurement) {
@@ -553,12 +558,12 @@ void MSF_Core<EKFState_T>::Init(
 
   usleep(100000);  // Hack, Hack, Hack, Hack thread sync.
 
-  MeasurementBuffer_.Clear();
-  stateBuffer_.Clear();
-  fuzzyTracker_.Reset();
+  MeasurementBuffer_.Clear();   ///清空测量量缓存
+  stateBuffer_.Clear();         ///清空状态缓存
+  fuzzyTracker_.Reset();      
 
-  while (!queueFutureMeasurements_.empty())
-    queueFutureMeasurements_.pop();
+  while (!queueFutureMeasurements_.empty())     ///清空未来测量量队列
+    queueFutureMeasurements_.pop(); 
 
   // Push one state to the buffer to apply the init on.
   shared_ptr<EKFState_T> state(new EKFState_T);
@@ -578,7 +583,7 @@ void MSF_Core<EKFState_T>::Init(
 
   assert(state->time != 0);
 
-  it_last_IMU = stateBuffer_.Insert(state);
+  it_last_IMU = stateBuffer_.Insert(state); ///将初始状态插入状态缓存区
 
   // Will be set upon first IMU message.
   time_P_propagated = state->time;
@@ -601,24 +606,24 @@ void MSF_Core<EKFState_T>::Init(
 
   msf_timing::Timing::Print(std::cout);
 }
-
+   
 template<typename EKFState_T>
 void MSF_Core<EKFState_T>::AddMeasurement(
     shared_ptr<MSF_MeasurementBase<EKFState_T> > measurement) {
 
   // Return if not initialized of no imu data available.
-  if (!initialized_ || !predictionMade_)
+  if (!initialized_ || !predictionMade_)    ///必须初始化后或者状态预测后，才执行
     return;
 
   // Check if the measurement is in the future where we don't have imu
-  // measurements yet.
+  // measurements yet.（too new）
   if (measurement->time > stateBuffer_.GetLast()->time) {
-    queueFutureMeasurements_.push(measurement);
+    queueFutureMeasurements_.push(measurement); ///测量量比状态缓存中的时间戳都大，属于未来的测量量
     return;
 
   }
   // Check if there is still a state in the buffer for this message (too old).
-  if (measurement->time < stateBuffer_.GetFirst()->time) {
+  if (measurement->time < stateBuffer_.GetFirst()->time) {  ///测量量比状态缓存中的时间戳都小，数据太旧
     MSF_WARN_STREAM(
         "You tried to give me a measurement which is too far in the past. Are "
         "you sure your clocks are synced and delays compensated correctly? "
@@ -627,9 +632,10 @@ void MSF_Core<EKFState_T>::AddMeasurement(
     return;  // Reject measurements too far in the past.
   }
 
+  ///测量量时间戳处于状态缓存中  
   // Add this measurement to the buffer and get an iterator to it.
   typename measurementBufferT::iterator_T it_meas =
-      MeasurementBuffer_.Insert(measurement);
+      MeasurementBuffer_.Insert(measurement);   
   // Get an iterator the the end of the measurement buffer.
   typename measurementBufferT::iterator_T it_meas_end = MeasurementBuffer_
       .GetIteratorEnd();
@@ -648,7 +654,7 @@ void MSF_Core<EKFState_T>::AddMeasurement(
       continue;
     msf_timing::DebugTimer timer_meas_get_state("Get state for measurement");
     // Propagates covariance to state.
-    shared_ptr<EKFState_T> state = GetClosestState(it_meas->second->time);
+    shared_ptr<EKFState_T> state = GetClosestState(it_meas->second->time);  ///获取距离此时刻最近状态
     timer_meas_get_state.Stop();
     if (state->time <= 0) {
       MSF_ERROR_STREAM_THROTTLE(
@@ -659,11 +665,11 @@ void MSF_Core<EKFState_T>::AddMeasurement(
     msf_timing::DebugTimer timer_meas_apply("Apply measurement");
     // Calls back core::ApplyCorrection(), which sets time_P_propagated to meas
     // time.
-    it_meas->second->Apply(state, *this);
+    it_meas->second->Apply(state, *this);   ///应用此测量量
     timer_meas_apply.Stop();
     // Make sure to propagate to next measurement or up to now if no more
     // measurements. Propagate from current state.
-    it_curr = stateBuffer_.GetIteratorAtValue(state);
+    it_curr = stateBuffer_.GetIteratorAtValue(state);   ///获取此状态在状态缓存队列的位置
 
     typename StateBuffer_T::iterator_T it_end;
     typename measurementBufferT::iterator_T it_nextmeas = it_meas;
