@@ -152,6 +152,7 @@ class PoseSensorManager : public msf_core::MSF_SensorManagerROS<
   }
 
   void Init(double scale) const {
+    ///p,v,q是从imu系到世界坐标系
     Eigen::Matrix<double, 3, 1> p, v, b_w, b_a, g, w_m, a_m, p_ic, p_vc, p_wv;
     Eigen::Quaternion<double> q, q_wv, q_ic, q_cv;
     msf_core::MSF_Core<EKFState_T>::ErrorStateCov P;
@@ -168,7 +169,8 @@ class PoseSensorManager : public msf_core::MSF_SensorManagerROS<
     p_wv.setZero();  // Vision-world position drift.
 
     P.setZero();  // Error state covariance; if zero, a default initialization in msf_core is used
-
+    
+    //从外受传感器相机（视觉，gps等）获取从相机到视觉系统坐标系的位姿 
     p_vc = pose_handler_->GetPositionMeasurement();
     q_cv = pose_handler_->GetAttitudeMeasurement();
 
@@ -176,15 +178,17 @@ class PoseSensorManager : public msf_core::MSF_SensorManagerROS<
         "initial measurement pos:["<<p_vc.transpose()<<"] orientation: "<<STREAMQUAT(q_cv));
 
     // Check if we have already input from the measurement sensor.
+    //若还没有位姿，使用0和单位旋转初始化
     if (p_vc.norm() == 0)
       MSF_WARN_STREAM(
           "No measurements received yet to initialize position - using [0 0 0]");
     if (q_cv.w() == 1)
       MSF_WARN_STREAM(
           "No measurements received yet to initialize attitude - using [1 0 0 0]");
-
+    
+    //从配置文件读取相机-IMU外参数
     ros::NodeHandle pnh("~");
-    pnh.param("pose_sensor/init/p_ic/x", p_ic[0], 0.0);
+    pnh.param("pose_sensor/init/p_ic/x", p_ic[0], 0.0); ///最后一个参数是默认参数（外部配置文件没有设置相应参数时）
     pnh.param("pose_sensor/init/p_ic/y", p_ic[1], 0.0);
     pnh.param("pose_sensor/init/p_ic/z", p_ic[2], 0.0);
 
@@ -192,20 +196,21 @@ class PoseSensorManager : public msf_core::MSF_SensorManagerROS<
     pnh.param("pose_sensor/init/q_ic/x", q_ic.x(), 0.0);
     pnh.param("pose_sensor/init/q_ic/y", q_ic.y(), 0.0);
     pnh.param("pose_sensor/init/q_ic/z", q_ic.z(), 0.0);
-    q_ic.normalize();
+    q_ic.normalize();   ///确保为单位长度四元数（才能保证是表示旋转）
 
     // Calculate initial attitude and position based on sensor measurements.
     if (!pose_handler_->ReceivedFirstMeasurement()) {  // If there is no pose measurement, only apply q_wv.
-      q = q_wv;
+      q = q_wv; ///若没收到，那么默认v系（视觉系统坐标系）和imu系相同，
     } else {  // If there is a pose measurement, apply q_ic and q_wv to get initial attitude.
-      q = (q_ic * q_cv.conjugate() * q_wv).conjugate();
+      q = (q_ic * q_cv.conjugate() * q_wv).conjugate(); 
     }
 
     q.normalize();
     p = p_wv + q_wv.conjugate().toRotationMatrix() * p_vc / scale
         - q.toRotationMatrix() * p_ic;
 
-    a_m = q.inverse() * g;			/// Initial acceleration.
+    a_m = q.inverse() * g;			/// Initial acceleration.将重力加速度表示在imu系下做为初始加速度的测量值，
+                                    ///这里是针对无人机的，所以初始状态（腾空）只考虑重力加速度
 
     // Prepare init "measurement"
     // True means that this message contains initial sensor readings.
