@@ -165,7 +165,7 @@ class PoseSensorManager : public msf_core::MSF_SensorManagerROS<
     v << 0, 0, 0;			/// Robot velocity (IMU centered).
     w_m << 0, 0, 0;		/// Initial angular velocity.
 
-    q_wv.setIdentity();  // Vision-world rotation drift.
+    q_wv.setIdentity();  // Vision-world rotation drift.00000在msf中v系是会漂的不是固定的
     p_wv.setZero();  // Vision-world position drift.
 
     P.setZero();  // Error state covariance; if zero, a default initialization in msf_core is used
