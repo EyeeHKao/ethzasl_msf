@@ -210,7 +210,7 @@ class PoseSensorManager : public msf_core::MSF_SensorManagerROS<
         - q.toRotationMatrix() * p_ic;
 
     a_m = q.inverse() * g;			/// Initial acceleration.将重力加速度表示在imu系下做为初始加速度的测量值，
-                                    ///这里是针对无人机的，所以初始状态（腾空）只考虑重力加速度
+                                    ///这里是针对无人机的，所以初始状态（静止，并假设imu在水平面，z轴朝上时）有一个竖直向上大小为g的加速度测量量
 
     // Prepare init "measurement"
     // True means that this message contains initial sensor readings.
